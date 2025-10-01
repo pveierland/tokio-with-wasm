@@ -4,8 +4,8 @@
 //! of time.
 
 use crate::{
-  LocalReceiver, LogError, clear_interval, local_channel, set_interval,
-  set_timeout,
+  LocalReceiver, LogError, SendWrapper, clear_interval, local_channel,
+  set_interval, set_timeout,
 };
 use js_sys::Promise;
 use std::error::Error;
@@ -19,9 +19,9 @@ use wasm_bindgen::prelude::{Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 
 async fn time_future(duration: Duration) {
-  let milliseconds = duration.as_millis() as f64;
+  let milliseconds = duration.as_millis() as i32;
   let promise = Promise::new(&mut |resolve, _reject| {
-    set_timeout(&resolve, milliseconds);
+    let _ = set_timeout(&resolve, milliseconds);
   });
   JsFuture::from(promise).await.log_error("TIME_FUTURE");
 }
@@ -29,14 +29,17 @@ async fn time_future(duration: Duration) {
 /// Waits until `duration` has elapsed.
 pub fn sleep(duration: Duration) -> Sleep {
   let time_future = time_future(duration);
+
   Sleep {
-    time_future: Box::pin(time_future),
+    time_future: SendWrapper::new(
+      Box::pin(time_future) as Pin<Box<dyn Future<Output = ()>>>
+    ),
   }
 }
 
 /// Future returned by `sleep`.
 pub struct Sleep {
-  time_future: Pin<Box<dyn Future<Output = ()>>>,
+  time_future: SendWrapper<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
 impl Future for Sleep {
@@ -59,14 +62,16 @@ where
   let time_future = time_future(duration);
   Timeout {
     future: Box::pin(future),
-    time_future: Box::pin(time_future),
+    time_future: SendWrapper::new(
+      Box::pin(time_future) as Pin<Box<dyn Future<Output = ()>>>
+    ),
   }
 }
 
 /// Future returned by `timeout`.
 pub struct Timeout<F: Future> {
   future: Pin<Box<F>>,
-  time_future: Pin<Box<dyn Future<Output = ()>>>,
+  time_future: SendWrapper<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
 impl<F: Future> Future for Timeout<F> {
@@ -112,7 +117,7 @@ impl From<Elapsed> for io::Error {
 /// Creates a new interval that ticks every `period` duration.
 pub fn interval(period: Duration) -> Interval {
   let (tx, rx) = local_channel::<()>();
-  let period_ms = period.as_millis() as f64;
+  let period_ms = period.as_millis() as i32;
   // Create a closure that sends a tick via the channel.
   let closure = Closure::wrap(Box::new(move || {
     tx.send(());
@@ -152,7 +157,7 @@ impl Interval {
     // Create a new channel to receive ticks.
     let (tx, rx) = local_channel::<()>();
     self.rx = rx;
-    let period_ms = self.period.as_millis() as f64;
+    let period_ms = self.period.as_millis() as i32;
     // Set up a new interval.
     let closure = Closure::wrap(Box::new(move || {
       tx.send(());

@@ -40,7 +40,7 @@ async fn manage_pool() {
       worker_pool.flush_queued_tasks();
     });
     let promise = Promise::new(&mut |resolve, _reject| {
-      set_timeout(&resolve, 100.0);
+      set_timeout(&resolve, 100);
     });
     JsFuture::from(promise).await.log_error("MANAGE_POOL");
   }
@@ -285,7 +285,7 @@ where
 /// by the JavaScript runtime.
 pub async fn yield_now() {
   let promise = Promise::new(&mut |resolve, _reject| {
-    set_timeout(&resolve, 0.0);
+    set_timeout(&resolve, 0);
   });
   JsFuture::from(promise).await.log_error("YIELD_NOW");
 }
